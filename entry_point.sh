@@ -47,7 +47,7 @@ EOF
 # =============================
 parse_params() {
   SELECTED_APPROACH=""
-  INSTANCE="$DEFAULT_INSTANCE"
+  INSTANCE=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in

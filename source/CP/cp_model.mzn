@@ -1,5 +1,5 @@
 include "alldifferent.mzn";
-include "lex_less.mzn";
+include "global_cardinality_low_up.mzn";
 
 % =====================
 % Parameters
@@ -27,21 +27,43 @@ constraint forall(w in Weeks)(
     alldifferent([match[w,p,s] | p in Periods, s in 1..2]) 
 );
 
-
 % 2. each team plays at most twice in the same period
-constraint forall(p in Periods, t in Teams) (
-    sum(w in Weeks)(bool2int(match[w,p,1] = t) + bool2int(match[w,p,2] = t)) <= 2
+constraint forall(p in Periods)(
+    global_cardinality_low_up(
+        [match[w,p,s] | w in Weeks, s in 1..2], 
+        Teams,                                  
+        [0 | t in Teams],                      
+        [2 | t in Teams]                      
+    )
 );
 
-% 3. each pair of teams plays exactly once (using alldifferent)
-constraint forall(a in Teams, b in Teams where a < b) (
-  sum(w in Weeks, p in Periods)(
-    bool2int(match[w,p,1] = a /\ match[w,p,2] = b) +
-    bool2int(match[w,p,1] = b /\ match[w,p,2] = a)
-  ) = 1
-);
+% 3. each pair of teams plays exactly once
+constraint forall(t in Teams) (
+    alldifferent( [ sum(p in Periods)(
+                      if match[w,p,1] == t then match[w,p,2] 
+                      else if match[w,p,2] == t then match[w,p,1] 
+                      else 0 
+                      endif 
+                      endif ) | w in Weeks ]));
 
-solve satisfy;
+
+
+% =====================
+% Solve 
+% =====================
+
+int: use_ss;
+
+solve :: 
+    if use_ss == 1 then
+        int_search(
+            match,
+            dom_w_deg,       
+            indomain_random 
+        )
+        :: restart_geometric(1.5, 500) 
+    endif
+    satisfy;
 
 
 % =====================

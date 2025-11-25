@@ -1,5 +1,6 @@
 include "global_cardinality.mzn";
 include "alldifferent.mzn";
+include "global_cardinality.mzn";
 
 % =====================
 % Parameters
@@ -60,30 +61,37 @@ constraint forall(w in 1..(n-2)) (
 % =====================
 % Optimization: balance home/away fairness
 % =====================
+
+% get the count of home games
 array[Teams] of var 0..(n-1): home_games;
-array[Teams] of var 0..(n-1): away_games;
-
-constraint forall(t in Teams)(
-    home_games[t] = sum(w in Weeks, p in Periods)(bool2int(match[w,p,1] = t))
+constraint global_cardinality(
+    [ match[w,p,1] | w in Weeks, p in Periods ], 
+    Teams,
+    home_games
 );
 
-constraint forall(t in Teams)(
-    away_games[t] = sum(w in Weeks, p in Periods)(bool2int(match[w,p,2] = t))
+% calculate the deviation between home and away, then minimize
+var int: max_dev;
+constraint max_dev = max(t in Teams)(
+    abs(2 * home_games[t] - (n - 1))
 );
 
-array[Teams] of var int: deviation;
-constraint forall(t in Teams)(
-    deviation[t] = abs(home_games[t] - away_games[t])
-);
+% =====================
+% Solve 
+% =====================
 
-var int: max_dev = max(t in Teams)(deviation[t]);
+int: use_ss;
 
-% Search strategy
-solve :: int_search(
-    [match[w,p,s] | w in Weeks, p in Periods, s in 1..2],
-    first_fail,
-    indomain_min
-) minimize max_dev;
+solve :: 
+    if use_ss == 1 then
+        int_search(
+            match,
+            dom_w_deg,       
+            indomain_random 
+        )
+        :: restart_geometric(1.5, 500) 
+    endif
+    minimize max_dev;
 
 % =====================
 % Output

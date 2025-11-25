@@ -1,5 +1,6 @@
-include "global_cardinality.mzn";
 include "alldifferent.mzn";
+include "global_cardinality_low_up.mzn";
+include "global_cardinality.mzn";
 
 % =====================
 % Parameters
@@ -21,58 +22,65 @@ array[Weeks, Periods, 1..2] of var Teams: match;
 % Constraints
 % =====================
 
-
 % 1. each team plays exactly once per week
 constraint forall(w in Weeks)(
-    global_cardinality([match[w,p,s] | p in Periods, s in 1..2],
-                       [t | t in Teams],
-                       [1 | t in Teams]) 
+    alldifferent([match[w,p,s] | p in Periods, s in 1..2]) 
 );
 
 % 2. each team plays at most twice in the same period
-constraint forall(p in Periods, t in Teams) (
-    sum(w in Weeks)(bool2int(match[w,p,1] = t) + bool2int(match[w,p,2] = t)) <= 2
+constraint forall(p in Periods)(
+    global_cardinality_low_up(
+        [match[w,p,s] | w in Weeks, s in 1..2], 
+        Teams,                                  
+        [0 | t in Teams],                      
+        [2 | t in Teams]                      
+    )
 );
 
-% 3. each pair of teams plays exactly once (using alldifferent)
-constraint forall(a in Teams, b in Teams where a < b) (
-  sum(w in Weeks, p in Periods)(
-    bool2int(match[w,p,1] = a /\ match[w,p,2] = b) +
-    bool2int(match[w,p,1] = b /\ match[w,p,2] = a)
-  ) = 1
-);
+% 3. each pair of teams plays exactly once
+constraint forall(t in Teams) (
+    alldifferent( [ sum(p in Periods)(
+                      if match[w,p,1] == t then match[w,p,2] 
+                      else if match[w,p,2] == t then match[w,p,1] 
+                      else 0 
+                      endif 
+                      endif ) | w in Weeks ]));
 
 
 % =====================
 % Optimization: balance home/away fairness
 % =====================
+
+% get the count of home games
 array[Teams] of var 0..(n-1): home_games;
-array[Teams] of var 0..(n-1): away_games;
-
-constraint forall(t in Teams)(
-    home_games[t] = sum(w in Weeks, p in Periods)(bool2int(match[w,p,1] = t))
+constraint global_cardinality(
+    [ match[w,p,1] | w in Weeks, p in Periods ], 
+    Teams,
+    home_games
 );
 
-constraint forall(t in Teams)(
-    away_games[t] = sum(w in Weeks, p in Periods)(bool2int(match[w,p,2] = t))
+% calculate the deviation between home and away, then minimize
+var int: max_dev;
+constraint max_dev = max(t in Teams)(
+    abs(2 * home_games[t] - (n - 1))
 );
 
-array[Teams] of var int: deviation;
-constraint forall(t in Teams)(
-    deviation[t] = abs(home_games[t] - away_games[t])
-);
+% =====================
+% Solve 
+% =====================
 
-var int: max_dev = max(t in Teams)(deviation[t]);
+int: use_ss;
 
-% Search strategy
-solve :: int_search(
-    [match[w,p,s] | w in Weeks, p in Periods, s in 1..2],
-    first_fail,
-    indomain_min
-) minimize max_dev;
-
-% solve minimize max_dev;
-
+solve :: 
+    if use_ss == 1 then
+        int_search(
+            match,
+            dom_w_deg,       
+            indomain_random 
+        )
+        :: restart_geometric(1.5, 500) 
+    endif
+    minimize max_dev;
 
 % =====================
 % Output
