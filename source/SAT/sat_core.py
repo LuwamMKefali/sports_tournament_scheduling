@@ -60,7 +60,7 @@ def build_model(n, use_symmetry=False, max_diff=None):
     Periods = list(range(1, periods + 1))
 
     s = Solver()
-    s.set("timeout", 300000)   # 300 seconds
+    s.set("timeout", 300000)  # 
 
     # Directed match variable: i home vs j away in (p,w)
     H = {}

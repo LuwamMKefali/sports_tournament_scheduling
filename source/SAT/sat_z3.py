@@ -2,10 +2,12 @@
 
 import sys, time
 from pathlib import Path
-sys.path.append(str(Path(__file__).resolve().parents[1]))
-from common.io_json import write_result_json
 
-from sat_core import build_model, extract_schedule
+# Add project root to sys.path
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+from common.io_json import write_result_json
+from SAT.sat_core import build_model, extract_schedule   # <-- FIXED
 from z3 import sat
 
 if __name__ == "__main__":
