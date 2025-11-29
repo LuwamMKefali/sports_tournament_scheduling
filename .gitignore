@@ -4,9 +4,7 @@ dev/
 *.ipynb
 .vscode/*
 
-res/
 res2/
-cds-sts/
 source/SAT/dimacs/
 source/SAT/wcnf/
 source/SMT/smt2/
@@ -18,3 +16,4 @@ source/SMT_LIA/smt2/
 __pycache__/
 *.pyc
 
+.venv/
