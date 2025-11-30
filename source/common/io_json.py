@@ -1,14 +1,27 @@
 import json
 from pathlib import Path
 
-def write_result_json(approach_name, n, json_path, solve_time, optimal, solution_matrix, obj=None):
+def write_result_json(approach_name, json_path, solve_time, status, solution_matrix, obj=None):
     """
-    Write/update JSON entry for this solver.
+    status in {"sat", "unsat", "timeout"}.
 
-    This function:
-      - loads existing JSON,  if there are any)
-      - inserts/updates only this solver key
-      - ensures valid format
+    SAT (solution found):
+        time  = actual solve time (clipped to 300)
+        optimal = True
+        obj  = int or None
+        sol  = non-empty
+
+    UNSAT (proved within time limit):
+        time    = actual solve time
+        optimal = True
+        obj     = None
+        sol     = []
+
+    TIMEOUT / unknown:
+        time    = 300
+        optimal = False
+        obj     = None
+        sol     = []
     """
 
     json_path = Path(json_path)
@@ -23,15 +36,29 @@ def write_result_json(approach_name, n, json_path, solve_time, optimal, solution
     else:
         data = {}
 
-    # Always use the same naming convention
-    key = f"{approach_name}_{n}"
+    if status == "sat":
+        entry = {
+            "time": int(min(solve_time, 300)),
+            "optimal": True,
+            "obj": obj,
+            "sol": solution_matrix
+        }
+    elif status == "unsat":
+        entry = {
+            "time": int(min(solve_time, 300)),
+            "optimal": True,
+            "obj": None,
+            "sol": []
+        }
+    else:  # timeout / unknown
+        entry = {
+            "time": 300,
+            "optimal": False,
+            "obj": None,
+            "sol": []
+        }
 
-    data[key] = {
-        "time": int(solve_time),
-        "optimal": bool(optimal),
-        "obj": obj if obj is not None else None,
-        "sol": solution_matrix if solution_matrix is not None else []
-    }
+    data[approach_name] = entry
 
     with open(json_path, "w") as f:
         json.dump(data, f, indent=2)

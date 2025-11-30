@@ -1,27 +1,37 @@
-# source/SAT/sat_z3.py
-
-import sys, time
+import sys
+import time
 from pathlib import Path
 
-# Add project root to sys.path
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+from z3 import sat, unsat
 from common.io_json import write_result_json
-from SAT.sat_core import build_model, extract_schedule   # <-- FIXED
-from z3 import sat
+from SAT.sat_core import build_model, extract_schedule
 
 if __name__ == "__main__":
     n = int(sys.argv[1])
-    s, H, W, P = build_model(n, use_symmetry=False, max_diff=None)
+
+    s, M, H, W, P = build_model(n, use_symmetry=False, max_diff=None)
 
     start = time.time()
     res = s.check()
     elapsed = time.time() - start
 
-    optimal = (res == sat)
-    sol = extract_schedule(s.model(), n, H, W, P) if optimal else []
+    print(f"[z3_sat] n={n} status={res} time={elapsed:.3f}s")
 
-    out = f"res/SAT/{n}.json"
-    write_result_json("SAT_Z3", n, out, elapsed, optimal, sol)
+    json_path = Path("res") / "SAT" / f"{n}.json"
 
-    print(f"[SAT_Z3] n={n} result={res} time={elapsed:.3f}s -> {out}")
+    if res == sat:
+        sol = extract_schedule(s.model(), n, M, H, W, P)
+        status = "sat"
+        obj = None
+    elif res == unsat:
+        sol = []
+        status = "unsat"
+        obj = None
+    else:
+        sol = []
+        status = "timeout"
+        obj = None
+
+    write_result_json("z3_sat", json_path, elapsed, status, sol, obj)

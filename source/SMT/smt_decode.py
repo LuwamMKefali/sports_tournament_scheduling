@@ -1,63 +1,111 @@
 # source/SMT/smt_decode.py
 #
-# Decode SMT solver model output (SMT-LIB) into the schedule matrix.
+# Decode an SMT-LIB model (from Yices, OpenSMT, etc.)
+# into the STS schedule format:
+#   sol[period][week] = [home, away]
 #
-# Expects model output with fragments like:
-#   (define-fun H_1_2_P1_W1 () Bool true)
-#   or with 'true' on the next line.
-#
-# Returns:
-#   sol: (n/2) x (n-1) matrix of [home, away] pairs.
+# Variables follow the naming used in smtlib_export.py:
+#   M_i_j_Pp_Ww : Bool  (unordered match between teams i<j)
+#   H_i_j_Pp_Ww : Bool  (direction: True = i home, False = j home)
 
 import re
 
 
-def decode_smt_model(output_text, n):
+def decode_smt_model(model_str: str, n: int):
     """
-    Parse SMT solver 'model' output and reconstruct the schedule
-    into the matrix format required by the solution checker.
+    Parse SMT solver model output and reconstruct schedule.
 
     Args:
-        output_text : raw stdout of the SMT solver
-        n           : number of teams
+        model_str : stdout of the SMT solver (string)
+        n         : number of teams (even)
 
     Returns:
-        sol (periods x weeks matrix), each entry [home, away],
-        or a matrix full of None if no TRUE assignments were found.
+        sol : list[period][week] = [home, away]
     """
-    if not output_text:
-        # No output at all
-        periods = n // 2
-        weeks = n - 1
-        return [[None for _ in range(weeks)] for _ in range(periods)]
-
-    # Regex for:
-    #   (define-fun H_i_j_Pp_Ww () Bool true)
-    # possibly with "true" on the next line or with extra spaces
-    pattern = re.compile(
-        r"\(define-fun\s+H_(\d+)_(\d+)_P(\d+)_W(\d+)\s*"
-        r"\(\)\s*Bool\s*(?:\n|\r|\r\n|\s)*true\b",
-        re.IGNORECASE | re.DOTALL,
-    )
-
-    assignments = []
-
-    for match in pattern.finditer(output_text):
-        i = int(match.group(1))
-        j = int(match.group(2))
-        p = int(match.group(3))
-        w = int(match.group(4))
-        assignments.append((i, j, p, w))
 
     periods = n // 2
     weeks = n - 1
 
-    # Initialize empty schedule
+    # Maps (i,j,p,w) -> bool
+    M_vals = {}
+    H_vals = {}
+
+    lines = model_str.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if line.startswith("(define-fun"):
+            parts = line.replace("(", " ").replace(")", " ").split()
+            # Expect something like: define-fun M_1_2_P0_W0 () Bool
+            name = None
+            if len(parts) >= 3:
+                name = parts[2] if parts[1] == "define-fun" else parts[1]
+
+            if not name:
+                i += 1
+                continue
+
+            # Find value (true/false) in subsequent lines (including possibly this one)
+            val = None
+            j = i
+            while j < len(lines):
+                l2 = lines[j]
+                if " true" in l2 or l2.strip().endswith("true"):
+                    val = True
+                    break
+                if " false" in l2 or l2.strip().endswith("false"):
+                    val = False
+                    break
+                if ")" in l2:
+                    # end of this define-fun block; if no true/false found, give up
+                    break
+                j += 1
+
+            if val is None:
+                i = j + 1
+                continue
+
+            # Parse names of form M_i_j_Pp_Ww or H_i_j_Pp_Ww
+            if name.startswith("M_") or name.startswith("H_"):
+                # Example: M_1_2_P0_W0
+                m = re.match(r"([MH])_(\d+)_(\d+)_P(\d+)_W(\d+)", name)
+                if m:
+                    kind = m.group(1)
+                    ti = int(m.group(2))
+                    tj = int(m.group(3))
+                    p = int(m.group(4))
+                    w = int(m.group(5))
+                    key = (ti, tj, p, w)
+                    if kind == "M":
+                        M_vals[key] = val
+                    else:
+                        H_vals[key] = val
+
+            i = j + 1
+        else:
+            i += 1
+
+    # Build solution matrix
     sol = [[None for _ in range(weeks)] for _ in range(periods)]
 
-    for (i, j, p, w) in assignments:
-        # indices in model are 1-based; matrix is 0-based
-        if 1 <= p <= periods and 1 <= w <= weeks:
-            sol[p - 1][w - 1] = [i, j]
+    # For every M that is true, set the match at (p,w)
+    for (ti, tj, p, w), mv in M_vals.items():
+        if not mv:
+            continue
+        if p < 0 or p >= periods or w < 0 or w >= weeks:
+            continue
 
+        # Direction: default i home, j away
+        home, away = ti, tj
+
+        key = (ti, tj, p, w)
+        if key in H_vals:
+            hv = H_vals[key]
+            if hv is False:
+                home, away = tj, ti
+
+        sol[p][w] = [home, away]
+
+    # There should be exactly one match per (p,w), but if some are None
+    # we still return the partial structure (the caller/solution checker will catch it).
     return sol

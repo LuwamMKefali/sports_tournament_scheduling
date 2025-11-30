@@ -2,15 +2,13 @@
 set -Eeuo pipefail
 trap cleanup SIGINT SIGTERM ERR EXIT
 
-# =============================
+
 # Configurable Parameters
-# =============================
-APPROACHES=("CP" "MIP" "SMT")
+
+APPROACHES=("CP" "MIP" "SAT" "SMT")
 DEFAULT_INSTANCE=6
 
-# =============================
 # Utility Functions
-# =============================
 cleanup() {
   trap - SIGINT SIGTERM ERR EXIT
 }
@@ -42,9 +40,8 @@ EOF
   exit 0
 }
 
-# =============================
 # Parse Command-Line Arguments
-# =============================
+
 parse_params() {
   SELECTED_APPROACH=""
   INSTANCE=0
@@ -69,9 +66,8 @@ parse_params() {
   done
 }
 
-# =============================
-# Main Logic
-# =============================
+# main
+
 main() {
   parse_params "$@"
 
@@ -101,7 +97,6 @@ run_approach() {
   fi
 }
 
-# =============================
 # Entrypoint Execution
-# =============================
+
 main "$@"

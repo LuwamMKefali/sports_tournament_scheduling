@@ -1,24 +1,41 @@
-# source/SAT/sat_z3_opt.py
-
 import sys, time
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[1]))
-from common.io_json import write_result_json
 
-from sat_core import binary_search_max_diff, extract_schedule
+from common.io_json import write_result_json
+from SAT.sat_core import binary_search_max_diff, extract_schedule
 
 if __name__ == "__main__":
     n = int(sys.argv[1])
 
+    json_path = f"res/SAT/{n}.json"
+
     start = time.time()
-    model, best_diff, H, W, P = binary_search_max_diff(n, use_symmetry=False)
+    model, best_diff, M, H, W, P = binary_search_max_diff(
+        n, use_symmetry=False, verbose=False
+    )
     elapsed = time.time() - start
 
-    optimal = model is not None
-    sol = extract_schedule(model, n, H, W, P) if optimal else []
+    if best_diff is None:
+        # UNSAT case
+        write_result_json(
+            "z3_opt",
+            json_path,
+            elapsed,
+            "unsat",
+            [],
+            None
+        )
+        print(f"[z3_opt] n={n} status=unsat time={elapsed:.3f}s")
 
-    out = f"res/SAT/{n}.json"
-    write_result_json("SAT_Z3_OPT", n, out, elapsed, optimal, sol, obj=best_diff)
-
-    print(f"[SAT_Z3_OPT] n={n} result={'sat' if optimal else 'unsat'} "
-          f"best_diff={best_diff} time={elapsed:.3f}s -> {out}")
+    else:
+        sol = extract_schedule(model, n, M, H, W, P)
+        write_result_json(
+            "z3_opt",
+            json_path,
+            elapsed,
+            "sat",
+            sol,
+            best_diff
+        )
+        print(f"[z3_opt] n={n} best_diff={best_diff} status=sat time={elapsed:.3f}s")
