@@ -69,10 +69,11 @@ def solve_ampl(model_name, model_file, solver_name, n):
     ampl.eval(f"option solver {solver_name};")
 
     
-    start = time.time()
+    t_solve_start = time.perf_counter()
     ampl.solve()
     t_solve_end = time.perf_counter()
 
+    preprocessing_time = t_solve_start - t_pre_start
     solver_time = t_solve_end - t_solve_start
     total_time = preprocessing_time + solver_time
 
