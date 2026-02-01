@@ -1,0 +1,189 @@
+import argparse
+import time
+from pathlib import Path
+from amplpy import AMPL
+from utils_json import write_result_json
+
+
+MODEL_FILES = {
+    "MIP_plain":    "source/MIP/sts_plain.mod",
+    "MIP_symmetry": "source/MIP/sts_symmetry.mod",
+    "MIP_implied":  "source/MIP/sts_implied.mod",
+    "MIP_opt":      "source/MIP/sts_opt.mod",
+}
+
+SOLVERS = ["gurobi", "cplex"]
+
+
+def generate_round_robin(n, unordered=False):
+    teams = list(range(1, n + 1))
+    fixed = teams[-1]
+    rotating = teams[:-1]
+
+    matches = []
+
+    for w in range(1, n):
+        left = [fixed] + rotating[: (n // 2) - 1]
+        right = rotating[(n // 2) - 1:][::-1]
+
+        for i, j in zip(left, right):
+            if unordered:
+                matches.append((min(i, j), max(i, j), w))
+            else:
+                matches.append((i, j, w))
+
+        rotating = [rotating[-1]] + rotating[:-1]
+
+    return matches
+
+
+def solve_ampl(model_name, model_file, solver_name, n):
+    ampl = AMPL()
+
+    ampl.setOption("solver_msg", 0)
+    ampl.setOption("show_stats", 0)
+    ampl.setOption("display_precision", 0)
+
+    ampl.setOption(
+        "gurobi_options",
+        "timelimit=300 threads=1 outlev=0"
+    )
+    ampl.setOption(
+        "cplex_options",
+        "timelimit=300 mipgap=0 display=0"
+    )
+
+    t_pre_start = time.perf_counter()
+
+    ampl.read(model_file)
+    ampl.eval(f"let n := {n};")
+
+    is_opt = model_name.startswith("MIP_opt")
+    matches = generate_round_robin(n, unordered=is_opt)
+
+    dat_path = "/tmp/matches.dat"
+    with open(dat_path, "w") as f:
+        f.write("set MATCHES :=\n")
+        for i, j, w in matches:
+            f.write(f"  ({i},{j},{w})\n")
+        f.write(";\n")
+
+    ampl.readData(dat_path)
+    ampl.eval(f"option solver {solver_name};")
+
+    t_pre_end = time.perf_counter()
+    preprocessing_time = t_pre_end - t_pre_start
+
+    t_solve_start = time.perf_counter()
+    ampl.solve()
+    t_solve_end = time.perf_counter()
+
+    solver_time = t_solve_end - t_solve_start
+    total_time = preprocessing_time + solver_time
+
+    result = str(ampl.getValue("solve_result")).lower()
+    result_num = int(ampl.getValue("solve_result_num"))
+
+    if "error" in result or result_num >= 500:
+        return total_time, False, None, []
+
+    if "limit" in result or result_num == 400:
+        return 300, False, None, []
+
+    obj = None
+    objs = ampl.getObjectives()
+    for _, objective in objs:
+        obj = objective.value()
+        break
+
+    sol = extract_schedule(ampl, n)
+    if sol == []:
+        return total_time, False, None, []
+
+    return total_time, True, obj, sol
+
+
+def extract_schedule(ampl, n):
+    try:
+        vals = ampl.getVariable("x").getValues()
+    except:
+        return []
+
+    sched = [[None for _ in range(n - 1)] for _ in range(n // 2)]
+
+    for (i, j, w, p), val in vals.to_dict().items():
+        if val > 0.5:
+            sched[int(p) - 1][int(w) - 1] = [int(i), int(j)]
+
+    has_match = any(any(slot is not None for slot in row) for row in sched)
+    if not has_match:
+        return []
+
+    return sched
+
+
+def run_all(n):
+    results = {}
+
+    print(f"\nRunning AMPL models for n = {n}...\n")
+
+    for model_name, file_name in MODEL_FILES.items():
+        for solver_name in SOLVERS:
+
+            tag = f"{model_name}_{solver_name}"
+            print(f"  → {tag}")
+
+            elapsed, optimal, obj, sol = solve_ampl(
+                model_name, file_name, solver_name, n
+            )
+
+            if not model_name.startswith("MIP_opt"):
+                obj = None
+
+            if not optimal:
+                print("     ✗ No valid solution")
+                results[tag] = {
+                    "time": int(min(elapsed, 300)),
+                    "optimal": False,
+                    "obj": None,
+                    "sol": []
+                }
+            else:
+                print("     ✓ Solution found")
+                results[tag] = {
+                    "time": int(min(elapsed, 300)),
+                    "optimal": True,
+                    "obj": obj,
+                    "sol": sol
+                }
+
+    out = Path("res/MIP")
+    out.mkdir(parents=True, exist_ok=True)
+    outfile = out / f"{n}.json"
+
+    write_result_json(str(outfile), full_data=results)
+    print(f"\nSaved: {outfile}\n")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Run MIP models for the Sports Tournament Scheduling problem."
+    )
+    parser.add_argument(
+        "-n",
+        type=int,
+        required=True,
+        help="Instance size to run. Use 0 to run all default instances."
+    )
+
+    args = parser.parse_args()
+    inst = args.n
+
+    if inst == 0:
+        default_instances = [6, 8, 10, 12, 14, 16, 18, 20, 22, 24]
+        print(f"Running all default instances: {default_instances}")
+        for n in default_instances:
+            run_all(n)
+    else:
+        print(f"Running specific instance: n = {inst}")
+        run_all(inst)
