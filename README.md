@@ -64,6 +64,7 @@ docker run --rm -v "$(pwd)/source:/sports_tournament_scheduling/source" -v "$(pw
 ```bash
 docker run --rm -v "$(pwd)/source:/sports_tournament_scheduling/source" -v "$(pwd)/res:/sports_tournament_scheduling/res" -it sts --approach CP --instance 10
 ```
+sudo docker run --rm   -v "$(pwd)/source:/sports_tournament_scheduling/source"   -v "$(pwd)/res:/sports_tournament_scheduling/res"   -it   --entrypoint python3   sts   source/CP/run.py -n 18 --sb 1 --solver chuffed
 
 ### Run solution checker:
 

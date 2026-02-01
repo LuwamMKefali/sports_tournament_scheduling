@@ -94,5 +94,11 @@
     "optimal": false,
     "obj": null,
     "sol": []
+  },
+  "chuffed_sb_ss": {
+    "time": 300,
+    "optimal": false,
+    "obj": null,
+    "sol": []
   }
 }

@@ -637,7 +637,7 @@
     ]
   },
   "glucose_sb": {
-    "time": 3,
+    "time": 4,
     "optimal": true,
     "obj": null,
     "sol": [
